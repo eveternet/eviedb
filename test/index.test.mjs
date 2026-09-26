@@ -1,8 +1,7 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
+import { expect, test } from 'bun:test';
 
 import * as eviedb from 'eviedb';
 
 test('the package entry point can be imported', () => {
-  assert.deepEqual(Object.keys(eviedb), []);
+  expect(Object.keys(eviedb)).toEqual([]);
 });
