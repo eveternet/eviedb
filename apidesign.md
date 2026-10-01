@@ -20,7 +20,7 @@ To filter down `firstname`s in user table:
 const users: Table = db.users.filter({ firstname: "Evie" });
 ```
 
-Object filters use AND semantics. Every supplied field must match.
+Object filters use AND semantics. Every supplied field must match. When a filtered field has an index, EvieDB may use that index to find matching internal row IDs instead of scanning the whole table.
 
 To filter a number that is not equals to, but less than / more than:
 
@@ -30,7 +30,7 @@ const users: Table = db.users.filter((user) => {
 });
 ```
 
--# Note: This _is_ going to be unoptimised in v0 and thats okay. This is just best for DX at the moment.
+-# Note: This _is_ going to be unoptimised in v0 and thats okay. Callback filters scan rows at runtime rather than requiring index/query-planner support.
 
 To get all `firstname`s:
 
@@ -100,9 +100,11 @@ To do anything:
 
 ```ts
 db.write((datab) => {
-  // datab is raw JSON-shaped data containing every table and every row
+  // datab is the raw EvieDB representation, including internal row IDs
 });
 ```
+
+`db.write()` exposes EvieDB's raw database representation, including the internal row IDs used by indexes. Those IDs are storage metadata and are not exposed by the normal typed read API.
 
 `db.write()` may add, edit, or delete rows. It may not add or delete tables or schema-defined columns. The database shape defined by the schema stays the same.
 
@@ -128,13 +130,11 @@ Values from unknown sources must be narrowed or validated by the application bef
 
 Malformed or incompatible persisted data is a storage/decoding error rather than application input validation.
 
-### Undesigned EvieDB things:
+### Runtime storage:
 
-Indexes. They weird.
+EvieDB's public API is runtime-agnostic. Runtime-specific persistence and the exact storage location/backend used by `eviedb.init()` are implementation details.
 
-Detailed persistence and recovery behavior beyond avoiding partial successful writes. A WAL or stronger crash recovery may be added later, but is not required for v0.
-
-Which runtimes/platform storage APIs v0 supports.
+v0 only guarantees support for runtimes for which EvieDB provides a storage implementation.
 
 ### Types:
 
@@ -158,3 +158,7 @@ interface Table {
 ```
 
 Read ordering is unspecified.
+
+### Undesigned EvieDB things:
+
+Detailed persistence and recovery behavior beyond avoiding partial successful writes. A WAL or stronger crash recovery may be added later, but is not required for v0.
