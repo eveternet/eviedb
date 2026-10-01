@@ -28,7 +28,7 @@ export default database.db;
 
 `required: false` allows the property to be `undefined`. It can later be assigned a value, or an existing value can be replaced with `undefined`. It does not make `null` valid unless the field type itself explicitly supports `null`.
 
-`unique: true` means duplicate present values cause the operation to fail. Multiple rows may have `undefined` for the same optional unique field; absence is not treated as a duplicate value.
+`unique: true` means duplicate present values cause the operation to fail immediately when staging the mutation. Uniqueness is checked against persisted data plus previously staged changes. The failed operation stages nothing, while previously staged work remains staged. Multiple rows may have `undefined` for the same optional unique field; absence is not treated as a duplicate value.
 
 The v0 `number()` scalar accepts finite JavaScript numbers. `NaN`, `Infinity`, and `-Infinity` are unsupported. Finite values such as `-0` remain ordinary JavaScript numbers.
 
@@ -42,7 +42,7 @@ For EvieDB's current public API needs, a primary key is just a field that is uni
 
 An index is persisted as a separate JSON file mapping an indexed value to the internal row ID or IDs containing that value. Non-unique indexes may map one value to multiple row IDs. Unique indexes can map a value to only one row because duplicate values fail.
 
-Insert, update, and delete operations keep indexes in sync with table data. Equality object filters can use these mappings to find rows without scanning the whole table. Callback filters scan rows in v0.
+Insert, update, and delete operations keep indexes in sync with the logical/staged table data. `db.push()` persists staged table and index changes together. Normal reads and equality object filters use persisted state until the push succeeds. Equality object filters can use these mappings to find rows without scanning the whole table. Callback filters scan rows in v0.
 
 The exact JSON layout, internal row-ID generation strategy, and lower-level index implementation are implementation details as long as these semantics are preserved.
 

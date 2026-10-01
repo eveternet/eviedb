@@ -14,7 +14,9 @@ Reads only see the current persisted database state. Staged changes are not visi
 
 Rows returned by reads are snapshot values with EvieDB row identity. Assigning to their properties only changes the local object and does not stage a database mutation. Rows may expose explicit mutation methods such as `.update()` and `.delete()`; those methods target the same database row by its internal identity and stage an EvieDB mutation.
 
-A retained filtered `Table` keeps the row selection made when `filter()` ran. It does not rerun its filter later if persisted database state changes.
+A retained filtered `Table` keeps the internal row IDs selected when `filter()` ran. It does not rerun its filter later if persisted database state changes. Reads through that table return the current persisted values of those selected rows, not the values from when the selection was created. An individual row object already returned by a read remains a local snapshot.
+
+Reads skip selected row IDs that no longer exist in persisted state. Mutations through retained tables or row objects skip targeted row IDs that no longer exist in the logical/staged state. If no targeted rows remain, the operation is a no-op.
 
 To filter down `firstname`s in user table:
 
@@ -89,13 +91,27 @@ db.users.filter({ active: false }).delete();
 
 `insert()`, `update()`, `delete()`, and `write()` return nothing.
 
+### Staged mutations
+
+Mutations operate on the current logical/staged state: the persisted database plus all previously staged changes. They are applied in call order. For example, `insert(); update(); push()` updates the newly inserted row as well as existing rows when the update targets the whole table.
+
+This does not change read visibility. Normal reads, including `filter()`, still see only persisted state until `push()`. A mutation through a filtered table targets its retained row IDs in the current logical/staged state.
+
+Uniqueness is checked immediately when staging a mutation against the current logical/staged state. A failed mutation throws synchronously and stages nothing from that operation; previously staged work remains staged. A bulk update succeeds or fails as one operation, rather than staging changes to only some of its rows.
+
+Calling `insert()` through a filtered table inserts into the underlying table. The new row does not have to match the filter and does not join that table's retained selection.
+
+### Persistence
+
 To finalise all staged edit operations:
 
 ```ts
 db.push();
 ```
 
-A failed `push()` should discard all changes from that push rather than leave a partially persisted operation.
+`db.push()` is synchronous and returns `void`. On success, all staged changes are persisted and become visible to normal reads. If persistence fails, `push()` throws synchronously and discards all changes from that push rather than leaving a partially persisted operation. The previously persisted database state remains unchanged.
+
+`push()` persists mutations that were already accepted during staging; it is not the point at which uniqueness violations are first discovered.
 
 ### To use EvieDB but _badly_:
 
@@ -107,7 +123,7 @@ db.write((datab) => {
 });
 ```
 
-`db.write()` exposes EvieDB's raw database representation, including the internal row IDs used by indexes. Those IDs are storage metadata and are not exposed by the normal typed read API.
+`db.write()` exposes the current logical/staged database in EvieDB's raw representation, including the internal row IDs used by indexes. Those IDs are storage metadata and are not exposed by the normal typed read API.
 
 `db.write()` may add, edit, or delete rows. It may not add or delete tables or schema-defined columns. The database shape defined by the schema stays the same.
 
