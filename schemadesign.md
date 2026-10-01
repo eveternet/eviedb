@@ -26,9 +26,11 @@ export default database.db;
 
 `required` defaults to `true`. A required property must exist and may not be `null` or `undefined`.
 
-`required: false` allows the property to be `undefined`. It can later be assigned a value, or an existing value can be replaced with `undefined`.
+`required: false` allows the property to be `undefined`. It can later be assigned a value, or an existing value can be replaced with `undefined`. It does not make `null` valid unless the field type itself explicitly supports `null`.
 
-`unique: true` means duplicate values cause the operation to fail.
+`unique: true` means duplicate present values cause the operation to fail. Multiple rows may have `undefined` for the same optional unique field; absence is not treated as a duplicate value.
+
+The v0 `number()` scalar accepts finite JavaScript numbers. `NaN`, `Infinity`, and `-Infinity` are unsupported. Finite values such as `-0` remain ordinary JavaScript numbers.
 
 EvieDB v0 has no developer-facing primary-key concept. Internally, EvieDB assigns each row a stable row ID for storage and index references. Internal row IDs are not part of schema-derived application row types and are not exposed through normal reads.
 
@@ -52,9 +54,9 @@ Internal row IDs and other raw storage metadata are visible through `db.write()`
 
 Database contents are loaded lazily when data is needed.
 
-EvieDB's public API is runtime-agnostic. The exact runtime-specific storage location/backend is an implementation detail. v0 only guarantees support for runtimes for which EvieDB provides a storage implementation.
+EvieDB's public API is runtime-agnostic. Each supported runtime/storage implementation has one EvieDB storage location selected by EvieDB. Calls to `eviedb.init()` in that environment reopen that same persistent database rather than selecting a database by user-provided name or path. The exact runtime-specific path/backend remains an implementation detail. v0 only guarantees support for runtimes for which EvieDB provides a storage implementation.
 
-Changing the declared schema of an existing database is a migration problem and is out of scope for v0.
+Changing the declared schema of an existing database is a migration problem and is out of scope for v0. If `init()` is given a schema incompatible with the existing database, initialization fails rather than silently reinterpreting persisted data.
 
 The schema must propagate into `database.db` so table names, row fields, field types, and optionality are inferred by TypeScript.
 
