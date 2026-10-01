@@ -7,16 +7,16 @@ import db from "./db.ts";
 To read `User` Table:
 
 ```ts
-const users: User[] = db.users.raw();
+const users: User[] = db.users.read();
 ```
 
-Reads only see the current persisted database state. Staged changes are not visible until they are finalised with `db.push()`.
+`read()` is a function and is the normal typed API boundary that actually retrieves row data. Table and filtered-table objects do not contain row data themselves; they expose operations and, for filtered tables, retain selection identity. Calling `read()` retrieves ordinary typed snapshot objects from the current persisted database state. Staged changes are not visible until they are finalised with `db.push()`.
 
-Rows returned by reads are snapshot values with EvieDB row identity. Assigning to their properties only changes the local object and does not stage a database mutation. Rows may expose explicit mutation methods such as `.update()` and `.delete()`; those methods target the same database row by its internal identity and stage an EvieDB mutation.
+Rows returned by `read()` are ordinary typed TypeScript snapshot objects, not live EvieDB objects. Assigning to their properties only changes the local object and does not stage a database mutation. Database mutations are performed through explicit actions on the relevant table or retained filtered table, such as `.update()` and `.delete()`.
 
-A retained filtered `Table` keeps the internal row IDs selected when `filter()` ran. It does not rerun its filter later if persisted database state changes. Reads through that table return the current persisted values of those selected rows, not the values from when the selection was created. An individual row object already returned by a read remains a local snapshot.
+A retained filtered `Table` keeps the internal row IDs selected when `filter()` ran. It does not rerun its filter later if persisted database state changes. Reads through that table return the current persisted values of those selected rows, not the values from when the selection was created. An individual row object already returned by `read()` remains a local snapshot.
 
-Reads skip selected row IDs that no longer exist in persisted state. Mutations through retained tables or row objects skip targeted row IDs that no longer exist in the logical/staged state. If no targeted rows remain, the operation is a no-op.
+Reads skip selected row IDs that no longer exist in persisted state. Mutations through retained tables skip targeted row IDs that no longer exist in the logical/staged state. If no targeted rows remain, the operation is a no-op.
 
 To filter down `firstname`s in user table:
 
@@ -172,7 +172,7 @@ interface Table {
   read: Function;
   insert: Function;
 
-  // Filtered tables and rows retain their selection/identity when assigned to variables.
+  // Table objects are dataless operation interfaces.\n  // Filtered tables retain their selected row identities when assigned to variables.\n  // Row data is only retrieved when read() is called.
 }
 ```
 
