@@ -32,11 +32,22 @@ To get all `firstname`s:
 const firstnames: string[] = db.user.read("firstname");
 ```
 
+To insert a item:
+
+````ts
+db.user.insert({
+  firstname: "Evie",
+  lastname: "Kabeewie",
+  score: 100,
+  active: true
+})
+```
+
 To update all `active` columns to `true`:
 
 ```ts
 db.user.update({ active: True });
-```
+````
 
 To filter all users with a specific `firstname` to update `active` columns to `true`:
 
@@ -54,6 +65,12 @@ To delete all entries where `active` is `false` in the `User` table:
 
 ```ts
 db.user.filter({ active: false }).delete();
+```
+
+To finalise all edit operations:
+
+```ts
+db.push();
 ```
 
 ### To use EvieDB but _badly_:
