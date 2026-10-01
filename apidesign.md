@@ -12,7 +12,9 @@ const users: User[] = db.users.raw();
 
 Reads only see the current persisted database state. Staged changes are not visible until they are finalised with `db.push()`.
 
-Rows returned by reads are detached values. Changing a returned row or array does not change the database.
+Rows returned by reads are snapshot values with EvieDB row identity. Assigning to their properties only changes the local object and does not stage a database mutation. Rows may expose explicit mutation methods such as `.update()` and `.delete()`; those methods target the same database row by its internal identity and stage an EvieDB mutation.
+
+A retained filtered `Table` keeps the row selection made when `filter()` ran. It does not rerun its filter later if persisted database state changes.
 
 To filter down `firstname`s in user table:
 
@@ -42,6 +44,7 @@ To insert a item:
 
 ```ts
 db.users.insert({
+  id: 1,
   firstname: "Evie",
   lastname: "Kabeewie",
   score: 100,
@@ -108,7 +111,7 @@ db.write((datab) => {
 
 `db.write()` may add, edit, or delete rows. It may not add or delete tables or schema-defined columns. The database shape defined by the schema stays the same.
 
-Changes made inside one failed `db.write()` are discarded together.
+Changes made inside one failed `db.write()` are discarded together. `db.write()` may expose and edit internal row IDs and index metadata, but EvieDB still owns their invariants. If the callback leaves the raw representation structurally inconsistent, the write fails rather than persisting inconsistent metadata.
 
 For example, to update users using arbitrary Javascript:
 
@@ -153,7 +156,7 @@ interface Table {
   read: Function;
   insert: Function;
 
-  // Note: Filter, delete, update and insert do nothing after they have been assigned to a variable. Ideally.
+  // Filtered tables and rows retain their selection/identity when assigned to variables.
 }
 ```
 
