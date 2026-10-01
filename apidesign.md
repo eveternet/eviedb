@@ -124,3 +124,24 @@ db.users.filter((user) => {
 
 Pros: Javascript
 Cons: Fucks with any possible index implementation. Maybe. Actually maybe not. I don't know.
+
+### Types:
+
+```ts
+inferface db {
+  // tables like
+  user: Table
+}
+
+interface Table {
+  length: number,
+  items: user[] // For Example
+  filter: function,
+  delete: function,
+  update: function,
+  read: function,
+  push: function
+
+  // Note: Filter, delete, update and push do nothing after they have been assigned to a variable. Ideally.
+}
+```
