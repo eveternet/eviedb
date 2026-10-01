@@ -55,6 +55,17 @@ To update all `active` columns to `true`:
 db.users.update({ active: true });
 ```
 
+`update()` is a partial replacement. Every property supplied to `update()` replaces that property's current value on each selected row. Properties not supplied are left unchanged.
+
+For optional fields, `undefined` is a valid value and represents the field having no value:
+
+```ts
+db.users.update({ score: undefined });
+db.users.update({ score: 100 });
+```
+
+Required fields cannot be set to `undefined`.
+
 To filter all users with a specific `firstname` to update `active` columns to `true`:
 
 ```ts
@@ -109,15 +120,19 @@ db.write((datab) => {
 });
 ```
 
+### Type safety:
+
+EvieDB v0 relies on TypeScript for application value type safety. It does not add a second runtime validation layer for values supplied through the typed API.
+
+Values from unknown sources must be narrowed or validated by the application before they can be passed to EvieDB, like any other typed TypeScript API. Using `any` or a type assertion can bypass these guarantees.
+
+Malformed or incompatible persisted data is a storage/decoding error rather than application input validation.
+
 ### Undesigned EvieDB things:
 
 Indexes. They weird.
 
-The exact runtime validation behavior for values supplied through Javascript or `any`.
-
-The exact merge/removal semantics of `update()`, including explicitly supplied `undefined`.
-
-Detailed persistence and recovery behavior beyond avoiding partial successful writes.
+Detailed persistence and recovery behavior beyond avoiding partial successful writes. A WAL or stronger crash recovery may be added later, but is not required for v0.
 
 Which runtimes/platform storage APIs v0 supports.
 
