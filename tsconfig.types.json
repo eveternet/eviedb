@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "exactOptionalPropertyTypes": true
+  },
+  "include": ["src/**/*.ts", "test/types.fixture.ts", "examples/**/*.ts"]
+}
