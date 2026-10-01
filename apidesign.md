@@ -165,7 +165,6 @@ interface db {
 
 interface Table {
   length: number;
-  items: User[]; // For Example
   filter: Function;
   delete: Function;
   update: Function;
