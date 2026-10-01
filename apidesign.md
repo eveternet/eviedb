@@ -1,25 +1,31 @@
 ### To use EvieDB:
 
 ```ts
-import { db } from "./db.ts";
+import db from "./db.ts";
 ```
 
 To read `User` Table:
 
 ```ts
-const users: User[] = db.user.raw();
+const users: User[] = db.users.raw();
 ```
+
+Reads only see the current persisted database state. Staged changes are not visible until they are finalised with `db.push()`.
+
+Rows returned by reads are detached values. Changing a returned row or array does not change the database.
 
 To filter down `firstname`s in user table:
 
 ```ts
-const user: Table = db.user.filter({ firstname: "Evie" });
+const users: Table = db.users.filter({ firstname: "Evie" });
 ```
+
+Object filters use AND semantics. Every supplied field must match.
 
 To filter a number that is not equals to, but less than / more than:
 
 ```ts
-const user: Table = db.user.filter((user) => {
+const users: Table = db.users.filter((user) => {
   return user.score > 100;
 });
 ```
@@ -29,49 +35,53 @@ const user: Table = db.user.filter((user) => {
 To get all `firstname`s:
 
 ```ts
-const firstnames: string[] = db.user.read("firstname");
+const firstnames: string[] = db.users.read("firstname");
 ```
 
 To insert a item:
 
-````ts
-db.user.insert({
+```ts
+db.users.insert({
   firstname: "Evie",
   lastname: "Kabeewie",
   score: 100,
-  active: true
-})
+  active: true,
+});
 ```
 
 To update all `active` columns to `true`:
 
 ```ts
-db.user.update({ active: True });
-````
+db.users.update({ active: true });
+```
 
 To filter all users with a specific `firstname` to update `active` columns to `true`:
 
 ```ts
-db.user.filter({ firstname: "Evie" }).update({ active: true });
+db.users.filter({ firstname: "Evie" }).update({ active: true });
 ```
 
 To delete all entries in `User` table:
 
 ```ts
-db.user.delete();
+db.users.delete();
 ```
 
 To delete all entries where `active` is `false` in the `User` table:
 
 ```ts
-db.user.filter({ active: false }).delete();
+db.users.filter({ active: false }).delete();
 ```
 
-To finalise all edit operations:
+`insert()`, `update()`, `delete()`, and `write()` return nothing.
+
+To finalise all staged edit operations:
 
 ```ts
 db.push();
 ```
+
+A failed `push()` should discard all changes from that push rather than leave a partially persisted operation.
 
 ### To use EvieDB but _badly_:
 
@@ -79,19 +89,21 @@ To do anything:
 
 ```ts
 db.write((datab) => {
-  // anything you like where datab is a raw json object containing all the data
+  // datab is raw JSON-shaped data containing every table and every row
 });
 ```
 
-For example, to get the data of a user in users:
+`db.write()` may add, edit, or delete rows. It may not add or delete tables or schema-defined columns. The database shape defined by the schema stays the same.
+
+Changes made inside one failed `db.write()` are discarded together.
+
+For example, to update users using arbitrary Javascript:
 
 ```ts
-let myUser: User;
 db.write((datab) => {
-  for (user in datab.users) {
-    if (user.name === "Evie") {
-      myUser = user;
-      break;
+  for (const user of datab.users) {
+    if (user.score > 100) {
+      user.active = true;
     }
   }
 });
@@ -101,47 +113,33 @@ db.write((datab) => {
 
 Indexes. They weird.
 
-Using .filter() in a way that is not just equals to.
-Rejected ideas:
+The exact runtime validation behavior for values supplied through Javascript or `any`.
 
-```ts
-db.users.filter({
-  columnName: "score",
-  operator: "=",
-  value: "100",
-});
-```
+The exact merge/removal semantics of `update()`, including explicitly supplied `undefined`.
 
-Reasons: so not javascripty
+Detailed persistence and recovery behavior beyond avoiding partial successful writes.
 
-Current idea:
-
-```ts
-db.users.filter((user) => {
-  return user.score === 100;
-});
-```
-
-Pros: Javascript
-Cons: Fucks with any possible index implementation. Maybe. Actually maybe not. I don't know.
+Which runtimes/platform storage APIs v0 supports.
 
 ### Types:
 
 ```ts
-inferface db {
+interface db {
   // tables like
-  user: Table
+  users: Table;
 }
 
 interface Table {
-  length: number,
-  items: user[] // For Example
-  filter: function,
-  delete: function,
-  update: function,
-  read: function,
-  push: function
+  length: number;
+  items: User[]; // For Example
+  filter: Function;
+  delete: Function;
+  update: Function;
+  read: Function;
+  insert: Function;
 
-  // Note: Filter, delete, update and push do nothing after they have been assigned to a variable. Ideally.
+  // Note: Filter, delete, update and insert do nothing after they have been assigned to a variable. Ideally.
 }
 ```
+
+Read ordering is unspecified.
