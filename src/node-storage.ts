@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { cwd } from "node:process";
+import { cwd, platform } from "node:process";
 import type { Schema } from "./schema.js";
 import type { Storage, StoredTable, Indexes } from "./storage.js";
 
@@ -56,7 +56,12 @@ export class NodeStorage implements Storage {
         }
       }
       this.writeFile(head, generation);
-      // The only commit point. No fallible operation follows it.
+      // Persist directory entries before publishing a head that references them.
+      this.syncDirectory(join(directory, "indexes"));
+      this.syncDirectory(directory);
+      this.syncDirectory(this.root);
+      this.syncDirectory(dirname(this.root));
+      // The only commit point. Nothing after this may report a failed commit.
       fs.renameSync(head, join(this.root, "HEAD.json"));
     } catch (error) {
       // Cleanup must never mask the persistence failure or affect the old generation.
@@ -65,6 +70,18 @@ export class NodeStorage implements Storage {
       throw error;
     }
     this.generation = generation;
+    // The new head is already visible. A sync failure cannot roll it back.
+    try { this.syncDirectory(this.root); } catch {}
+    // Retain generations: other open handles may still load their tables lazily.
+    // See STORAGE.md for disk growth and offline cleanup limitations.
+  }
+
+  private syncDirectory(path: string): void {
+    // Windows does not support opening directories for fsync through this API.
+    if (platform === "win32") return;
+    const directory = fs.openSync(path, "r");
+    try { fs.fsyncSync(directory); }
+    finally { fs.closeSync(directory); }
   }
 
   private writeFile(path: string, data: unknown): void {

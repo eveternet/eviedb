@@ -1,9 +1,30 @@
 import { describe, expect, test } from 'bun:test';
 import { number, string, ROW_ID, INDEXES } from 'eviedb';
 import { initialize } from '../dist/database.js';
-import { MemoryStorage, open, seeded, user } from './helpers.mjs';
+import { MemoryStorage, open, seeded, user, reindexUsers } from './helpers.mjs';
 
 describe('reviewed v0 regressions', () => {
+  test('omitted prototype-named columns are absent and required columns still fail', () => {
+    const storage = new MemoryStorage();
+    const optional = Object.fromEntries(['constructor', 'toString', '__proto__'].map(name => [name, string({ required: false, index: true })]));
+    const definition = { rows: { id: number(), ...optional } };
+    const db = open(storage, definition);
+    db.rows.insert({ id: 1 });
+    db.rows.insert(Object.assign(Object.create({ constructor: 'Inherited', toString: 'Inherited' }), { id: 2 }));
+    db.rows.insert({ id: 3, constructor: 'Own', toString: 'Own', ['__proto__']: 'Own' });
+    db.push();
+    const reopened = open(storage, definition);
+    for (const name of Object.keys(optional)) {
+      expect(reopened.rows.read(name)).toEqual([undefined, undefined, 'Own']);
+      expect(reopened.rows.filter({ [name]: undefined }).read('id')).toEqual([1, 2]);
+      const required = open(new MemoryStorage(), { rows: { [name]: string() } });
+      required.rows.insert({ [name]: 'Earlier' });
+      expect(() => required.rows.insert({})).toThrow('Required');
+      required.push();
+      expect(required.rows.read(name)).toEqual(['Earlier']);
+    }
+  });
+
   for (const rejects of [false, true]) {
     test(`async raw callback ${rejects ? 'rejects' : 'resolves'} after await without partial staging`, async () => {
       const { db, storage } = seeded();
@@ -137,5 +158,59 @@ describe('reviewed v0 regressions', () => {
     defined.db.push();
     expect(defined.db.rows.read()).toEqual([{ value: 'Chained' }]);
     expect(() => defined.definedb({ rows: { value: string() } })).toThrow('already defined');
+  });
+  test('thenable return values fail atomically, including callable thenables', async () => {
+    const { db } = seeded();
+    db.users.insert(user(4));
+    for (const result of [
+      { then(resolve) { resolve(); } },
+      { then(_resolve, reject) { reject(new Error('Rejected thenable')); } },
+      Object.assign(() => {}, { then() { throw new Error('Throwing thenable'); } }),
+    ]) {
+      expect(() => db.write(raw => {
+        raw.users[0].lastname = 'Rejected';
+        return result;
+      })).toThrow('synchronous');
+    }
+    await new Promise(resolve => setTimeout(resolve, 0));
+    db.push();
+    expect(db.users.read('lastname')).toEqual(Array(4).fill('Kabeewie'));
+  });
+  test('optional raw columns must remain present, but accept explicit undefined', () => {
+    const { db, storage } = seeded();
+    db.posts.insert({ title: 'Earlier', author: 1 });
+    expect(() => db.write(raw => { delete raw.users[0].score; })).toThrow('columns');
+    db.write(raw => {
+      raw.users[0].score = undefined;
+      reindexUsers(raw);
+    });
+    db.push();
+    const row = open(storage).users.filter({ id: 1 }).read()[0];
+    expect(Object.hasOwn(row, 'score')).toBe(true);
+    expect(row.score).toBeUndefined();
+    expect(db.users.filter({ score: undefined }).read('id')).toEqual([1]);
+    expect(db.posts.read('title')).toEqual(['Earlier']);
+  });
+  test('raw indexes reject sparse buckets', () => {
+    const { db } = seeded();
+    expect(() => db.write(raw => {
+      delete raw[INDEXES].users.firstname['"Evie"'][0];
+    })).toThrow('inconsistent indexes');
+  });
+  test('reentrant mutations cannot escape raw write rollback', () => {
+    const { db } = seeded();
+    db.users.insert(user(4));
+    for (const mutate of [
+      () => db.users.delete(),
+      () => db.push(),
+      () => db.write(() => {}),
+    ]) {
+      expect(() => db.write(raw => {
+        raw.users[0].lastname = 'Rejected';
+        mutate();
+      })).toThrow('supplied raw database');
+    }
+    db.push();
+    expect(db.users.read('lastname')).toEqual(Array(4).fill('Kabeewie'));
   });
 });

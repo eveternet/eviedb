@@ -114,3 +114,24 @@ function chainedInference(required: boolean, options: { required?: true }) {
   void [runtime, widened, always, definitelyRuntime, definitelyWidened, definitelyUnion];
 }
 void chainedInference;
+
+function chainedInitialization(required: boolean, options: {} | { required: false }) {
+  const database = eviedb.init().definedb({
+    rows: {
+      name: string(),
+      dynamic: number({ required }),
+      union: boolean(options),
+    },
+  });
+  database.db.rows.insert({ name: "Evie" });
+  database.db.rows.read()[0].name = "Mutable";
+  database.db.write(raw => { raw.rows[0].name = "Mutable raw"; });
+  // @ts-expect-error A runtime boolean can permit undefined.
+  const definiteNumber: number = database.db.rows.read()[0].dynamic;
+  // @ts-expect-error One union branch permits undefined.
+  const definiteBoolean: boolean = database.db.rows.read()[0].union;
+  // @ts-expect-error Chaining preserves the known column type.
+  database.db.rows.update({ name: 42 });
+  void [definiteNumber, definiteBoolean];
+}
+void chainedInitialization;

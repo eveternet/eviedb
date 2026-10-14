@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 import * as fs from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -88,9 +88,21 @@ describe('Node/Bun disk storage', () => {
     expect(() => open()).toThrow();
   }));
 
+  test('existing head with missing or malformed schema metadata fails initialization', () => inDirectory(directory => {
+    populated();
+    const metadata = join(generation(directory), 'schema.json');
+    for (const value of [null, {}, { version: 1, tables: ['users', 'posts'] }]) {
+      fs.writeFileSync(metadata, JSON.stringify(value));
+      expect(() => open()).toThrow('Incompatible');
+    }
+    fs.unlinkSync(metadata);
+    expect(() => open()).toThrow();
+  }));
+
   // Schema, each table and index, then the pending head are written separately.
   const files = 2 + Object.keys(schema).length + Object.values(schema).flatMap(fields => Object.values(fields)).filter(field => field.index).length;
-  for (const [operation, steps] of [['mkdirSync', 3], ['openSync', files], ['writeFileSync', files], ['fsyncSync', files], ['closeSync', files], ['renameSync', 1]]) {
+  const directories = process.platform === 'win32' ? 0 : 4;
+  for (const [operation, steps] of [['mkdirSync', 3], ['openSync', files + directories], ['writeFileSync', files], ['fsyncSync', files + directories], ['closeSync', files + directories], ['renameSync', 1]]) {
     for (let failure = 1; failure <= steps; failure++) {
       test(`failure at ${operation} step ${failure} leaves previous disk state and discards staged changes`, () => inDirectory(directory => {
         const db = populated();
@@ -148,6 +160,73 @@ describe('Node/Bun disk storage', () => {
     expect(open().users.read('id')).toEqual([1, 2]);
     db.push();
     expect(open().users.read('id')).toEqual([1, 2]);
+  }));
+
+  test.skipIf(process.platform === 'win32')('directory entries are synced before publication, including the new storage root', () => inDirectory(directory => {
+    const db = open();
+    db.users.insert(user(1));
+    const events = [];
+    const descriptors = new Map();
+    const originalOpen = fs.openSync, originalSync = fs.fsyncSync, originalRename = fs.renameSync;
+    const opened = spyOn(fs, 'openSync').mockImplementation((path, ...args) => {
+      const fd = originalOpen(path, ...args);
+      descriptors.set(fd, path);
+      return fd;
+    });
+    const synced = spyOn(fs, 'fsyncSync').mockImplementation(fd => {
+      events.push(descriptors.get(fd));
+      return originalSync(fd);
+    });
+    const renamed = spyOn(fs, 'renameSync').mockImplementation((...args) => {
+      events.push('publish');
+      return originalRename(...args);
+    });
+    try { db.push(); }
+    finally { opened.mockRestore(); synced.mockRestore(); renamed.mockRestore(); }
+    const location = generation(process.cwd()), root = dirname(location);
+    expect(events.slice(-6)).toEqual([join(location, 'indexes'), location, root, process.cwd(), 'publish', root]);
+    expect(open().users.read('id')).toEqual([1]);
+  }));
+
+  for (const operation of ['openSync', 'fsyncSync', 'closeSync']) {
+    test.skipIf(process.platform === 'win32')(`post-publication ${operation} failure keeps the successful commit`, () => inDirectory(() => {
+      const db = populated();
+      db.users.insert(user(3));
+      let published = false, failed = false;
+      const originalRename = fs.renameSync, original = fs[operation];
+      const renamed = spyOn(fs, 'renameSync').mockImplementation((...args) => {
+        const result = originalRename(...args);
+        published = true;
+        return result;
+      });
+      const fault = spyOn(fs, operation).mockImplementation((...args) => {
+        if (published) {
+          failed = true;
+          if (operation === 'closeSync') original(...args);
+          throw new Error('After publication');
+        }
+        return original(...args);
+      });
+      try { expect(() => db.push()).not.toThrow(); }
+      finally { renamed.mockRestore(); fault.mockRestore(); }
+      expect(failed).toBe(true);
+      expect(db.users.read('id')).toEqual([1, 2, 3]);
+      expect(open().users.read('id')).toEqual([1, 2, 3]);
+      db.users.insert(user(4));
+      db.push();
+      expect(open().users.read('id')).toEqual([1, 2, 3, 4]);
+    }));
+  }
+
+  test('retained generations keep previously opened lazy tables readable', () => inDirectory(() => {
+    const db = populated();
+    const earlier = open();
+    for (let i = 0; i < 3; i++) {
+      db.posts.update({ title: `Revision ${i}` });
+      db.push();
+    }
+    expect(earlier.posts.read('title')).toEqual(['Original']);
+    expect(open().posts.read('title')).toEqual(['Revision 2']);
   }));
 
   test('first push failure has no partially persisted database', () => inDirectory(directory => {

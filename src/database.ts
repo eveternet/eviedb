@@ -53,8 +53,10 @@ function equivalentIndexes(value: unknown, expected: Indexes): boolean {
     const actual = value[field];
     return record(actual) && sameKeys(actual, Object.keys(index)) && Object.entries(index).every(([key, ids]) => {
       const list = actual[key];
-      const members = new Set(ids);
-      return Array.isArray(list) && list.length === ids.length && new Set(list).size === list.length && list.every(id => members.has(id));
+      if (!Array.isArray(list) || list.length !== ids.length) return false;
+      const remaining = new Set(ids);
+      for (const id of list) if (typeof id !== "string" || !remaining.delete(id)) return false;
+      return true;
     });
   });
 }
@@ -175,7 +177,7 @@ export class Engine {
     const fields = this.schema[table];
     if (Object.keys(input).some(key => !Object.hasOwn(fields, key))) throw new Error("Unknown insert column");
     const values: Values = Object.create(null);
-    for (const name of Object.keys(fields)) values[name] = input[name];
+    for (const name of Object.keys(fields)) values[name] = Object.hasOwn(input, name) ? input[name] : undefined;
     let id: string;
     do { id = this.storage.rowId(); } while (rows.has(id));
     rows.set(id, values);

@@ -79,3 +79,29 @@ A straightforward starting strategy may use temporary files followed by atomic r
 JSON should be replaceable by binary records, pages, persistent trees, a WAL, a single database file, or something else if the project earns that complexity.
 
 Changing the physical format should not require ordinary application code to change.
+
+## Current v0 implementation and limits
+
+The Node/Bun adapter uses `.eviedb/` in the application's working directory. Each
+`push()` writes a complete immutable generation containing the schema, tables,
+and separate index files. Replacing `HEAD.json` atomically is the commit point.
+A failure before publication leaves the previous generation active and discards
+the staged batch. Readers load tables lazily from the generation opened by their
+handle; reopening observes the latest published generation.
+
+Files are synced before publication. On POSIX, the adapter also syncs the index,
+generation, storage-root, and parent directory entries before replacing the
+head, then attempts to sync the storage root again. A failure of that final sync
+cannot undo the already visible commit and is not reported as a failed push.
+Windows skips directory syncing. This is not a guarantee against power loss or
+a crash at every point, and there is no WAL or automatic recovery from a damaged
+head. Concurrent writers and coordinated multi-process access remain outside v0.
+
+Successful generations are retained because an open handle may still need their
+files for lazy reads. Disk usage therefore grows by approximately one full
+database snapshot per push, including pushes without changes. Failed-write
+cleanup is best effort; interrupted writes may also leave unused generations or
+temporary head files. v0 has no automatic compaction or online pruning policy.
+Use small demonstration databases and monitor disk space. Any manual cleanup
+requires stopping all processes and closing every handle first, backing up the
+database, and preserving `HEAD.json` and the complete generation it references.

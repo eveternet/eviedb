@@ -1,5 +1,5 @@
 import { initialize } from '../dist/database.js';
-import { string, number, boolean } from 'eviedb';
+import { string, number, boolean, ROW_ID, INDEXES } from 'eviedb';
 
 export const schema = {
   users: {
@@ -56,4 +56,18 @@ export function seeded() {
   db.users.insert(user(3, { score: 200 }));
   db.push();
   return { db, storage };
+}
+
+// Raw edits must supply matching metadata. This helper is only test setup.
+export function reindexUsers(raw) {
+  for (const [name, field] of Object.entries(schema.users)) {
+    if (!field.index) continue;
+    const index = {};
+    for (const row of raw.users) {
+      const value = row[name];
+      const key = value === undefined ? 'undefined' : JSON.stringify(String(value));
+      (index[key] ??= []).push(row[ROW_ID]);
+    }
+    raw[INDEXES].users[name] = index;
+  }
 }
